@@ -1,27 +1,41 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import json, os
+import json, os, gc
 from datetime import datetime, date as dt_date
 
 from dijkstra import dijkstra, mins_to_str
 from fare_calculator import estimate_route_fare, cheapest_class, _CLASS_ORDER
 
-app  = Flask(__name__)
+app = Flask(__name__)
 CORS(app)
- 
-print("Loading graph_enriched.json...")
-with open("graph_enriched.json", encoding="utf-8") as f:
-    GRAPH = json.load(f)
 
-ALL_STATIONS = set(GRAPH.keys())
-for edges in GRAPH.values():
-    for e in edges: ALL_STATIONS.add(e["to"])
-STATIONS_SORTED = sorted(ALL_STATIONS)
-TOTAL_EDGES = sum(len(v) for v in GRAPH.values())
-DAY_NAMES   = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+DAY_NAMES = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
 
-print(f"Loaded: {len(ALL_STATIONS)} stations | {TOTAL_EDGES} edges")
-print("Ready at http://localhost:5000\n")
+GRAPH           = None
+ALL_STATIONS    = None
+STATIONS_SORTED = None
+TOTAL_EDGES     = None
+
+def load_graph():
+    global GRAPH, ALL_STATIONS, STATIONS_SORTED, TOTAL_EDGES
+    if GRAPH is not None:
+        return  
+
+    print("Loading graph_enriched.json...")
+    with open("graph_enriched.json", encoding="utf-8") as f:
+        GRAPH = json.load(f)
+
+    ALL_STATIONS = set(GRAPH.keys())
+    for edges in GRAPH.values():
+        for e in edges:
+            ALL_STATIONS.add(e["to"])
+
+    STATIONS_SORTED = sorted(ALL_STATIONS)
+    TOTAL_EDGES     = sum(len(v) for v in GRAPH.values())
+
+    gc.collect()  
+    print(f"Loaded: {len(ALL_STATIONS)} stations | {TOTAL_EDGES} edges")
+
 
 
 def date_to_day(s):
@@ -97,13 +111,16 @@ def _fmt(result, travel_date=""):
     }
 
 
+
 @app.route("/", methods=["GET"])
 def health():
+    load_graph()
     return jsonify({"status":"ok","stations":len(ALL_STATIONS),"edges":TOTAL_EDGES})
 
 
 @app.route("/stations", methods=["GET"])
 def stations():
+    load_graph()
     q = request.args.get("q","").lower().strip()
     out = [s for s in STATIONS_SORTED if q in s.lower()] if q else STATIONS_SORTED
     return jsonify({"stations": out, "count": len(out)})
@@ -111,6 +128,7 @@ def stations():
 
 @app.route("/shortest-path", methods=["POST"])
 def shortest_path():
+    load_graph()
     d = request.get_json()
     if not d: return jsonify({"error":"No JSON"}), 400
     src = d.get("source","").strip(); dst = d.get("destination","").strip()
@@ -124,23 +142,15 @@ def shortest_path():
 @app.route("/find-route", methods=["POST"])
 def find_route():
     try:
+        load_graph()
         return _find_route_inner()
     except Exception as e:
         print(f"[find-route crash] {e}")
         import traceback; traceback.print_exc()
         return jsonify({"error": f"Server error: {e}", "found": False}), 500
 
+
 def _find_route_inner():
-    """
-    POST JSON fields:
-      source        : string  (required)
-      destination   : string  (required)
-      travel_date   : "YYYY-MM-DD"  e.g. "2026-03-15"
-      start_time    : "HH:MM"       e.g. "08:00"
-      preference    : "any" / "ac" / "sleeper"
-      coach_class   : "SL"/"3A"/"2A"/"1A"  (for fare display)
-      budget        : int INR  (optional — enables budget filter)
-    """
     d = request.get_json()
     if not d: return jsonify({"error":"No JSON"}), 400
 
@@ -158,7 +168,6 @@ def _find_route_inner():
     if src == dst:
         return jsonify({"error":"Source and destination cannot be the same"}), 400
 
-   
     if tdate:
         tday = date_to_day(tdate)
     elif tday:
@@ -170,11 +179,10 @@ def _find_route_inner():
     pac = pref == "ac"
     psl = pref in ("sleeper","sl")
 
-
     if psl and cls in (None, 'GN', '2S'):
-        cls = 'SL'          
+        cls = 'SL'
     elif pac and cls in (None, 'GN', '2S', 'SL'):
-        cls = '3A'          
+        cls = '3A'
 
     result = dijkstra(GRAPH, src, dst, travel_day=tday, start_time=stime,
                       prefer_ac=pac, prefer_sleeper=psl)
@@ -184,7 +192,6 @@ def _find_route_inner():
                         "found":False,"source":src,"destination":dst}), 404
 
     out = _fmt(result, travel_date=tdate)
-
 
     try:
         if psl:
@@ -200,7 +207,6 @@ def _find_route_inner():
                 fi = estimate_route_fare(out["segments"], preferred_class=c)
                 all_fares[c] = fi["total_fare"]
 
-       
         fare_info = estimate_route_fare(out["segments"], preferred_class=cls)
         out["fare"]             = fare_info["total_fare"]
         out["fare_breakdown"]   = fare_info["breakdown"]
@@ -208,7 +214,6 @@ def _find_route_inner():
         out["fare_per_segment"] = fare_info["per_segment"]
         out["all_class_fares"]  = all_fares
     except Exception as e:
-        
         out["fare"]             = 0
         out["fare_class"]       = cls or "SL"
         out["fare_breakdown"]   = ""
@@ -216,7 +221,6 @@ def _find_route_inner():
         out["all_class_fares"]  = {}
         print(f"[fare error] {e}")
 
-    # Budget logic
     try: bgt = int(bgt) if bgt is not None else None
     except: bgt = None
 
@@ -235,12 +239,11 @@ def _find_route_inner():
 
 
 def _find_alternative(src, dst, tday, stime, budget, cls, primary, pac, psl):
-    segs   = primary["segments"]
-    pfare  = primary["fare"]
-    pcls   = primary["fare_class"]
-    ptime  = primary["total_minutes"]
+    segs  = primary["segments"]
+    pfare = primary["fare"]
+    pcls  = primary["fare_class"]
+    ptime = primary["total_minutes"]
 
-   
     idx = _CLASS_ORDER.index(pcls) if pcls in _CLASS_ORDER else 4
     for c in _CLASS_ORDER[:idx]:
         if not all(c in s.get("classes",[]) for s in segs): continue
@@ -248,17 +251,17 @@ def _find_alternative(src, dst, tday, stime, budget, cls, primary, pac, psl):
         if a["total_fare"] <= budget:
             dep = segs[0].get("dep_ampm","--") if segs else "--"
             return {
-                "type":          "cheaper_class",
-                "coach_class":   c,
-                "fare":          a["total_fare"],
+                "type":           "cheaper_class",
+                "coach_class":    c,
+                "fare":           a["total_fare"],
                 "fare_breakdown": a["breakdown"],
-                "savings":       pfare - a["total_fare"],
-                "time_diff_min": 0,
-                "time_diff_str": "Same route, same time",
-                "total_time":    primary["total_time"],
-                "total_minutes": ptime,
-                "transfers":     primary["transfers"],
-                "segments":      segs,
+                "savings":        pfare - a["total_fare"],
+                "time_diff_min":  0,
+                "time_diff_str":  "Same route, same time",
+                "total_time":     primary["total_time"],
+                "total_minutes":  ptime,
+                "transfers":      primary["transfers"],
+                "segments":       segs,
                 "summary": (
                     f"Fastest route in {pcls} costs Rs{pfare} — over your budget of Rs{budget}.\n"
                     f"Here's the same route in {c}:\n"
@@ -266,7 +269,6 @@ def _find_alternative(src, dst, tday, stime, budget, cls, primary, pac, psl):
                 ),
             }
 
-    
     if pac or psl:
         r2 = dijkstra(GRAPH, src, dst, travel_day=tday, start_time=stime,
                       prefer_ac=False, prefer_sleeper=False)
@@ -277,17 +279,17 @@ def _find_alternative(src, dst, tday, stime, budget, cls, primary, pac, psl):
             dep2 = f2["segments"][0].get("dep_ampm","--") if f2["segments"] else "--"
             if a2["total_fare"] <= budget and abs(td) <= 180:
                 return {
-                    "type":          "relaxed_preference",
-                    "coach_class":   a2["class_used"],
-                    "fare":          a2["total_fare"],
+                    "type":           "relaxed_preference",
+                    "coach_class":    a2["class_used"],
+                    "fare":           a2["total_fare"],
                     "fare_breakdown": a2["breakdown"],
-                    "savings":       pfare - a2["total_fare"],
-                    "time_diff_min": td,
-                    "time_diff_str": f"+{mins_to_str(td)} longer" if td>0 else f"{mins_to_str(abs(td))} faster",
-                    "total_time":    f2["total_time"],
-                    "total_minutes": r2.get("total_minutes",0),
-                    "transfers":     r2.get("transfers",0),
-                    "segments":      f2["segments"],
+                    "savings":        pfare - a2["total_fare"],
+                    "time_diff_min":  td,
+                    "time_diff_str":  f"+{mins_to_str(td)} longer" if td>0 else f"{mins_to_str(abs(td))} faster",
+                    "total_time":     f2["total_time"],
+                    "total_minutes":  r2.get("total_minutes",0),
+                    "transfers":      r2.get("transfers",0),
+                    "segments":       f2["segments"],
                     "summary": (
                         f"Fastest route costs Rs{pfare} — over budget.\n"
                         f"More affordable option:\n"
@@ -297,21 +299,20 @@ def _find_alternative(src, dst, tday, stime, budget, cls, primary, pac, psl):
                     ),
                 }
 
-    
-    gn = estimate_route_fare(segs, preferred_class='GN')
+    gn  = estimate_route_fare(segs, preferred_class='GN')
     dep = segs[0].get("dep_ampm","--") if segs else "--"
     return {
-        "type":          "closest_available",
-        "coach_class":   "GN",
-        "fare":          gn["total_fare"],
+        "type":           "closest_available",
+        "coach_class":    "GN",
+        "fare":           gn["total_fare"],
         "fare_breakdown": gn["breakdown"],
-        "savings":       pfare - gn["total_fare"],
-        "time_diff_min": 0,
-        "time_diff_str": "Same route, same time",
-        "total_time":    primary["total_time"],
-        "total_minutes": ptime,
-        "transfers":     primary["transfers"],
-        "segments":      segs,
+        "savings":        pfare - gn["total_fare"],
+        "time_diff_min":  0,
+        "time_diff_str":  "Same route, same time",
+        "total_time":     primary["total_time"],
+        "total_minutes":  ptime,
+        "transfers":      primary["transfers"],
+        "segments":       segs,
         "summary": (
             f"No route found within Rs{budget}.\n"
             f"Cheapest available: Rs{gn['total_fare']} (GN class) — "
@@ -321,4 +322,5 @@ def _find_alternative(src, dst, tday, stime, budget, cls, primary, pac, psl):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
