@@ -1,21 +1,4 @@
-"""
-STEP 2 (FIXED v3) - Enrich Graph using Station Code Matching
-=============================================================
-Root cause of 60% miss rate:
-  Graph uses abbreviated names: 'Bolpur S Niktn', 'Dd Upadhyaya Jn', 'Barddhaman Jn'
-  Website uses full names     : 'Bolpur Santiniketan', 'Pt Deen Dayal Upadhyaya Jn', 'Bardhaman Junction'
 
-Fix: 
-  1. Build a master code->timing lookup from all schedules
-  2. Match graph station names to station codes using fuzzy similarity
-  3. Use codes for all timing lookups (codes are standardized: 'BWN', 'DDU', 'BHP')
-
-HOW TO RUN:
-    python step2_enrich_graph.py
-
-INPUT:  graph_adjacency_list.json + train_schedules.json
-OUTPUT: graph_enriched.json  +  station_code_map.json (for inspection)
-"""
 
 import json, re
 from difflib import SequenceMatcher
@@ -23,9 +6,9 @@ from difflib import SequenceMatcher
 GRAPH_FILE     = "graph_adjacency_list.json"
 SCHEDULES_FILE = "train_schedules.json"
 OUTPUT_FILE    = "graph_enriched.json"
-CODE_MAP_FILE  = "station_code_map.json"   # saves the name->code mapping for debugging
+CODE_MAP_FILE  = "station_code_map.json"   
 
-# ── Text normalization ────────────────────────────────────────────────────────
+
 
 SUFFIX_EXPAND = {
     'JN': 'JUNCTION', 'RD': 'ROAD', 'ST': 'STATION',
@@ -70,11 +53,11 @@ def build_indexes(schedules):
       norm_to_code     : { 'BARDHAMAN JUNCTION': 'BWN', ... }
       train_code_timing: { train_no: { station_code: {arr, dep, day} } }
     """
-    code_to_fullname  = {}   # code -> most common full name seen
-    norm_to_code      = {}   # normalized name -> code  
-    train_code_timing = {}   # train -> code -> timing
+    code_to_fullname  = {}  
+    norm_to_code      = {}    
+    train_code_timing = {}   
 
-    code_name_freq = {}      # code -> {name: count}
+    code_name_freq = {}      
 
     for train_no, data in schedules.items():
         if data.get('error') or not data.get('stations'):
@@ -88,17 +71,17 @@ def build_indexes(schedules):
             if not code or not name:
                 continue
 
-            # Track which full name is most commonly seen for each code
+            
             if code not in code_name_freq:
                 code_name_freq[code] = {}
             code_name_freq[code][name] = code_name_freq[code].get(name, 0) + 1
 
-            # Store normalized name -> code mapping
+            
             norm = normalize(name)
             if norm and norm not in norm_to_code:
                 norm_to_code[norm] = code
 
-            # Store timing
+           
             timing = {
                 'arrival':   stop['arrival'],
                 'departure': stop['departure'],
@@ -106,7 +89,7 @@ def build_indexes(schedules):
             }
             train_code_timing[train_no][code] = timing
 
-    # Build code_to_fullname from most frequent name
+    
     for code, name_counts in code_name_freq.items():
         code_to_fullname[code] = max(name_counts, key=name_counts.get)
 
@@ -114,16 +97,10 @@ def build_indexes(schedules):
 
 
 def build_graph_station_to_code(all_graph_stations, norm_to_code, code_to_fullname):
-    """
-    For each station name in the graph, find its best matching station code.
-    Strategy (in order):
-      1. Exact normalized match
-      2. High-similarity fuzzy match (>= 0.85)
-      3. One string contains the other
-    """
+
     station_to_code = {}
     
-    # Pre-compute normalized versions of all schedule station names
+   
     norm_keys = list(norm_to_code.keys())
 
     matched    = 0
@@ -138,7 +115,7 @@ def build_graph_station_to_code(all_graph_stations, norm_to_code, code_to_fullna
             matched += 1
             continue
 
-        # 2. Fuzzy match — only check keys with similar length (speed optimization)
+        # 2. Fuzzy match 
         slen = len(norm_station)
         candidates = [(k, norm_to_code[k]) for k in norm_keys
                       if abs(len(k) - slen) <= max(6, slen * 0.4)]
@@ -200,7 +177,7 @@ def main():
     print(f"  Unique station codes found : {len(code_to_fullname)}")
     print(f"  Normalized name->code keys : {len(norm_to_code)}")
 
-    # Collect all station names used in the graph
+   
     all_graph_stations = set(graph.keys())
     for edges in graph.values():
         for e in edges:
@@ -211,7 +188,7 @@ def main():
         all_graph_stations, norm_to_code, code_to_fullname
     )
 
-    # Save the mapping for inspection
+    
     with open(CODE_MAP_FILE, 'w', encoding='utf-8') as f:
         json.dump({
             s: {
@@ -222,7 +199,7 @@ def main():
         }, f, indent=2, ensure_ascii=False)
     print(f"  Station code map saved: {CODE_MAP_FILE}")
 
-    # Enrich the graph
+    
     print("\nEnriching graph edges...")
     total = enriched = missing = 0
     enriched_graph = {}
