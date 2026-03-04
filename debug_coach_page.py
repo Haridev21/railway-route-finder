@@ -1,7 +1,4 @@
-"""
-DEBUG v2 - Check multiple sites for coach composition
-Run: python debug_coach_page.py
-"""
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -26,9 +23,9 @@ for url in urls:
             soup = BeautifulSoup(r.text, "html.parser")
             title = soup.find("title")
             print(f"Title: {title.get_text() if title else 'None'}")
-            # Look for class-related keywords
+            
             body = soup.get_text(' ', strip=True)
-            # Find context around coach-related words
+          
             import re
             for kw in ['sleeper','AC','coach','class','1A','2A','3A','SL','CC']:
                 m = re.search(rf'.{{0,60}}{kw}.{{0,60}}', body, re.I)
