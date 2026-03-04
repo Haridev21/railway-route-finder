@@ -1,31 +1,15 @@
-"""
-STEP 1 (FIXED v3) - Scrape from trainspnrstatus.com
-=====================================================
-Source: https://www.trainspnrstatus.com/train-schedule/{train_no}
 
-Table structure confirmed:
-  Col 0: Stop number
-  Col 1: Station name (CODE)
-  Col 2: Arr / Dep time
-  Col 3: Distance + Day + Runs info
-
-HOW TO RUN:
-    pip install requests beautifulsoup4
-    python step1_scrape_schedules.py
-
-OUTPUT: train_schedules.json
-"""
 
 import json, time, os, re
 import requests
 from bs4 import BeautifulSoup
 
-# ── CONFIG ────────────────────────────────────────────────────────────────────
+
 GRAPH_FILE    = "graph_adjacency_list.json"
 OUTPUT_FILE   = "train_schedules.json"
 DELAY_SECONDS = 1.2
 SAVE_EVERY    = 50
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 SESSION = requests.Session()
 SESSION.headers.update({
@@ -42,12 +26,7 @@ DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def parse_running_days(text: str) -> list:
-    """
-    Parses running days from text like:
-      'daily' → [1,1,1,1,1,1,1]
-      'Mon Wed Fri' → [1,0,1,0,1,0,0]
-      'Except Sun' → [1,1,1,1,1,1,0]
-    """
+
     text = text.strip().lower()
     if not text or "daily" in text:
         return [1,1,1,1,1,1,1]
@@ -71,7 +50,7 @@ def parse_running_days(text: str) -> list:
 def parse_time(text: str) -> str:
     """Extract HH:MM from text. Returns '--' if not found."""
     text = text.strip()
-    # Source station has only one time (departure), dest has only arrival
+   
     m = re.search(r"\b(\d{1,2}:\d{2})\b", text)
     if m:
         t = m.group(1)
@@ -97,17 +76,17 @@ def get_train_schedule(train_no: str) -> dict:
         "stations":     []
     }
 
-    # ── Train name from <title> or <h1> ──────────────────────────────────────
+   
     title = soup.find("title")
     if title:
-        # e.g. "10101 Ratnagiri Madgaon Train Time Table: ..."
+       
         t = title.get_text(strip=True)
-        # Remove the train number prefix and " Train Time Table..." suffix
+       
         t = re.sub(r"^\d+\s*", "", t)
         t = re.sub(r"\s*Train Time Table.*", "", t, flags=re.I)
         result["train_name"] = t.strip()
 
-    # ── Find the schedule table ───────────────────────────────────────────────
+
     table = None
     for tbl in soup.find_all("table"):
         headers = [th.get_text(strip=True).lower() for th in tbl.find_all("th")]
@@ -116,7 +95,7 @@ def get_train_schedule(train_no: str) -> dict:
             break
 
     if not table:
-        return result  # page loaded but no table (wrong train number etc.)
+        return result  
 
     rows = table.find_all("tr")
 
@@ -125,49 +104,41 @@ def get_train_schedule(train_no: str) -> dict:
         if len(cols) < 3:
             continue
 
-        # Col 0: stop number (skip)
-        # Col 1: "Rajapur Road ( RAJP )"
-        # Col 2: "02:41 02:42" or just "01:40" (source) or just "09:00" (dest)
-        # Col 3: "64 Km Day 1 daily" or "0 Km Day 1 Mon Wed"
 
         raw_station = cols[1] if len(cols) > 1 else ""
         raw_time    = cols[2] if len(cols) > 2 else ""
         raw_info    = cols[3] if len(cols) > 3 else ""
 
-        # Parse station name and code
-        # Format: "Rajapur Road ( RAJP )"
+
         station_name = re.sub(r"\(.*?\)", "", raw_station).strip()
         code_match   = re.search(r"\(\s*([A-Z]+)\s*\)", raw_station)
         station_code = code_match.group(1) if code_match else ""
 
-        # Parse times — col 2 can have 1 or 2 times
+        
         times = re.findall(r"\d{1,2}:\d{2}", raw_time)
         if len(times) == 0:
             arrival   = "--"
             departure = "--"
         elif len(times) == 1:
-            # Source station: only departure. Dest station: only arrival.
-            # We'll set both to the same value and fix in step2
+
             arrival   = times[0] if len(times[0]) == 5 else "0" + times[0]
             departure = arrival
         else:
             arrival   = times[0] if len(times[0]) == 5 else "0" + times[0]
             departure = times[1] if len(times[1]) == 5 else "0" + times[1]
 
-        # Parse day number and distance from col 3
-        # Format: "64 Km Day 1 daily"
+
         day_match  = re.search(r"Day\s*(\d)", raw_info, re.I)
         day        = int(day_match.group(1)) if day_match else 1
 
         dist_match = re.search(r"(\d+)\s*Km", raw_info, re.I)
         distance   = float(dist_match.group(1)) if dist_match else 0.0
 
-        # Parse running days — comes after "Day N" in col 3
-        # e.g. "daily" or "Mon Wed Fri" or "Except Sun"
+
         runs_text  = re.sub(r".*Day\s*\d", "", raw_info, flags=re.I).strip()
         running    = parse_running_days(runs_text)
 
-        # Use the first station's running days as the train's running days
+        
         if not result["stations"]:
             result["running_days"] = running
 
