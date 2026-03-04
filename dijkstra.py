@@ -10,7 +10,7 @@ DAY_INDEX  = {d: i for i, d in enumerate(DAY_NAMES)}
 
 def time_to_min(t):
     if not t or str(t).strip() in ("--","None","null",""): return None
-    try:
+    try: 
         h, m = map(int, str(t).strip().split(":"))
         return h * 60 + m
     except: return None
