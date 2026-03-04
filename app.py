@@ -8,7 +8,7 @@ from fare_calculator import estimate_route_fare, cheapest_class, _CLASS_ORDER
 
 app  = Flask(__name__)
 CORS(app)
-
+ 
 print("Loading graph_enriched.json...")
 with open("graph_enriched.json", encoding="utf-8") as f:
     GRAPH = json.load(f)
