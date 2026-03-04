@@ -158,7 +158,7 @@ def _find_route_inner():
     if src == dst:
         return jsonify({"error":"Source and destination cannot be the same"}), 400
 
-    # Date -> day of week
+   
     if tdate:
         tday = date_to_day(tdate)
     elif tday:
@@ -170,12 +170,11 @@ def _find_route_inner():
     pac = pref == "ac"
     psl = pref in ("sleeper","sl")
 
-    # If user set a preference, auto-align coach_class with it
-    # so fare display matches what they actually asked for
+
     if psl and cls in (None, 'GN', '2S'):
-        cls = 'SL'          # sleeper preference → show SL fare
+        cls = 'SL'          
     elif pac and cls in (None, 'GN', '2S', 'SL'):
-        cls = '3A'          # AC preference → show 3A fare minimum
+        cls = '3A'          
 
     result = dijkstra(GRAPH, src, dst, travel_day=tday, start_time=stime,
                       prefer_ac=pac, prefer_sleeper=psl)
@@ -186,10 +185,7 @@ def _find_route_inner():
 
     out = _fmt(result, travel_date=tdate)
 
-    # Add fare for relevant classes only
-    # If preference=sleeper → only show non-AC classes
-    # If preference=ac      → only show AC classes
-    # Otherwise             → show all available
+
     try:
         if psl:
             fare_classes = ['GN','2S','SL']
@@ -204,7 +200,7 @@ def _find_route_inner():
                 fi = estimate_route_fare(out["segments"], preferred_class=c)
                 all_fares[c] = fi["total_fare"]
 
-        # Primary fare (chosen class or cheapest available)
+       
         fare_info = estimate_route_fare(out["segments"], preferred_class=cls)
         out["fare"]             = fare_info["total_fare"]
         out["fare_breakdown"]   = fare_info["breakdown"]
@@ -212,7 +208,7 @@ def _find_route_inner():
         out["fare_per_segment"] = fare_info["per_segment"]
         out["all_class_fares"]  = all_fares
     except Exception as e:
-        # Fare calc failed — still return the route, just no fare info
+        
         out["fare"]             = 0
         out["fare_class"]       = cls or "SL"
         out["fare_breakdown"]   = ""
@@ -244,7 +240,7 @@ def _find_alternative(src, dst, tday, stime, budget, cls, primary, pac, psl):
     pcls   = primary["fare_class"]
     ptime  = primary["total_minutes"]
 
-    # Strategy 1: Try cheaper class on the same route
+   
     idx = _CLASS_ORDER.index(pcls) if pcls in _CLASS_ORDER else 4
     for c in _CLASS_ORDER[:idx]:
         if not all(c in s.get("classes",[]) for s in segs): continue
@@ -270,7 +266,7 @@ def _find_alternative(src, dst, tday, stime, budget, cls, primary, pac, psl):
                 ),
             }
 
-    # Strategy 2: Relax AC/Sleeper filter, try any train
+    
     if pac or psl:
         r2 = dijkstra(GRAPH, src, dst, travel_day=tday, start_time=stime,
                       prefer_ac=False, prefer_sleeper=False)
@@ -301,7 +297,7 @@ def _find_alternative(src, dst, tday, stime, budget, cls, primary, pac, psl):
                     ),
                 }
 
-    # Strategy 3: Return cheapest possible with gap note
+    
     gn = estimate_route_fare(segs, preferred_class='GN')
     dep = segs[0].get("dep_ampm","--") if segs else "--"
     return {
