@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+train_schedules.json
+graph_adjacency_list.json
+station_code_map.json
+new_trains_found.json
