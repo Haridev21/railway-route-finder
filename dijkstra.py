@@ -89,7 +89,7 @@ def dijkstra(graph, source, destination,
     edge_used  = {}
     counter    = 0
 
-    # PQ: (elapsed, tie_break, clock_min, day_offset, station, last_train)
+   
     pq = [(0, counter, start_min, 0, source, None)]
 
     while pq:
