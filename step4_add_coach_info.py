@@ -1,39 +1,9 @@
-"""
-STEP 4 - Add Coach Info to Enriched Graph (Rule-Based)
-=======================================================
-Since no website exposes coach composition in scrapable HTML,
-we use train name/type rules — which are accurate for Indian Railways:
 
-  Rajdhani     → 1A, 2A, 3A
-  Duronto      → 1A, 2A, 3A, SL
-  Vande Bharat → EC, CC
-  Humsafar     → 3A
-  Tejas        → CC, EC
-  Garib Rath   → 3A, CC
-  Shatabdi     → CC, EC
-  Jan Shatabdi → CC, 2S
-  Intercity    → CC, 2S
-  Mail/Express → 1A, 2A, 3A, SL, GN  (standard)
-  Passenger    → SL, GN
-  MEMU/DEMU    → 2S, GN
-
-Also uses train NUMBER ranges (Indian Railways standard):
-  12001-12299  → Rajdhani/Shatabdi (premium)
-  22XXX        → Superfast (usually full AC or SL+AC)
-  ...etc.
-
-HOW TO RUN:
-    python step4_add_coach_info.py
-
-INPUT:  graph_enriched.json
-OUTPUT: graph_enriched.json (updated in-place)
-"""
 
 import json, re
 
 GRAPH_FILE = "graph_enriched.json"
 
-# ── Coach rules by train name keywords ───────────────────────────────────────
 
 CLASS_NAMES = {
     "1A":  "First AC (4-berth)",
@@ -48,10 +18,9 @@ CLASS_NAMES = {
     "FC":  "First Class (non-AC)",
 }
 
-# Rules: (keyword_pattern, classes_list)
-# Order matters — more specific rules first
+
 NAME_RULES = [
-    # Premium trains
+
     (r'vande bharat',          ["EC", "CC"]),
     (r'tejas rajdhani',        ["1A", "2A", "3A"]),
     (r'tejas',                 ["EC", "CC"]),
@@ -74,15 +43,14 @@ NAME_RULES = [
     (r'memu|demu|emu',         ["2S", "GN"]),
     (r'link express',          ["SL", "GN"]),
     (r'local',                 ["GN"]),
-    # Default Mail/Express
     (r'express|mail|superfast|sf|suf', ["2A", "3A", "SL", "GN"]),
 ]
 
-# Rules by train number range
+
 NUMBER_RULES = [
-    # Rajdhani / Shatabdi
-    (12001, 12025, ["1A", "2A", "3A"]),          # Rajdhani
-    (12030, 12099, ["EC", "CC"]),                  # Shatabdi
+
+    (12001, 12025, ["1A", "2A", "3A"]),          
+    (12030, 12099, ["EC", "CC"]),                  
     (22436, 22436, ["EC", "CC"]),                  # Vande Bharat
     # Duronto
     (12200, 12299, ["1A", "2A", "3A", "SL"]),
@@ -96,20 +64,17 @@ NUMBER_RULES = [
 
 
 def infer_classes(train_no: str, train_name: str) -> dict:
-    """
-    Returns dict with classes_available, has_ac, has_sleeper, has_general,
-    and class descriptions.
-    """
+
     name_lower = train_name.lower().strip()
     classes    = None
 
-    # 1. Match by train name
+
     for pattern, cls_list in NAME_RULES:
         if re.search(pattern, name_lower):
             classes = cls_list
             break
 
-    # 2. Match by train number if name didn't match
+ 
     if not classes:
         try:
             num = int(train_no)
@@ -120,9 +85,9 @@ def infer_classes(train_no: str, train_name: str) -> dict:
         except ValueError:
             pass
 
-    # 3. Default fallback
+  
     if not classes:
-        classes = ["2A", "3A", "SL", "GN"]  # standard express default
+        classes = ["2A", "3A", "SL", "GN"]  
 
     return {
         "classes_available": classes,
@@ -141,7 +106,7 @@ def main():
     total   = 0
     updated = 0
 
-    # Track per-train so we don't recompute
+  
     train_cache = {}
 
     for station, edges in graph.items():
@@ -160,7 +125,7 @@ def main():
     with open(GRAPH_FILE, "w", encoding="utf-8") as f:
         json.dump(graph, f, indent=2, ensure_ascii=False)
 
-    # Print summary
+    
     ac_trains      = sum(1 for v in train_cache.values() if v["has_ac"])
     sleeper_trains = sum(1 for v in train_cache.values() if v["has_sleeper"])
     general_trains = sum(1 for v in train_cache.values() if v["has_general"])
