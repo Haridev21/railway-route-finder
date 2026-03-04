@@ -1,9 +1,4 @@
-"""
-fare_calculator.py
-Indian Railways EXACT fare formula (July 2025 official rates)
-Same calculation used by IRCTC — matches ticket prices exactly.
-No API key needed.
-"""
+
 
 _2S_SLABS = [
     (50,   0.520), (100,  0.490), (150,  0.460), (200,  0.440),
@@ -65,7 +60,7 @@ def estimate_fare(distance_km, coach_class='SL', train_name=''):
 
 
 def closest_class(preferred, classes):
-    """Return closest available class to preferred. Never crashes."""
+    
     if not classes:
         return preferred or 'SL'
     if not preferred:
