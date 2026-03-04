@@ -1,27 +1,4 @@
-"""
-UPDATE & EXPAND TRAINS
-======================
-Does 3 things in one script:
 
-  1. RE-SCRAPE existing 3,602 trains  — updates changed schedules, fixes old data
-  2. DISCOVER new trains              — scans number ranges 10000-79999
-  3. ADD new trains to graph          — builds new edges and merges into graph
-
-HOW TO RUN:
-    python update_and_expand_trains.py
-
-    You will be asked what to do:
-      [1] Update existing trains only      (~90 mins)
-      [2] Discover + add new trains only   (~3-4 hours)
-      [3] Full refresh — both              (~5 hours)
-
-OUTPUT:
-    train_schedules.json       — updated
-    graph_adjacency_list.json  — expanded with new trains
-    new_trains_found.json      — list of newly discovered trains
-
-After this, re-run step2_enrich_graph.py and step4_add_coach_info.py
-"""
 
 import json, time, os, re, requests
 from bs4 import BeautifulSoup
@@ -50,7 +27,7 @@ SCAN_RANGES = [
 ]
 
 
-# ── Scraper ───────────────────────────────────────────────────────────────────
+
 
 def fetch_schedule(train_no: str) -> dict:
     """Fetch schedule for one train. Returns dict or {} on failure."""
@@ -64,7 +41,7 @@ def fetch_schedule(train_no: str) -> dict:
 
     soup = BeautifulSoup(r.text, "html.parser")
 
-    # Must have a proper title (not generic homepage)
+    
     title_tag = soup.find("title")
     if not title_tag:
         return {}
@@ -72,7 +49,7 @@ def fetch_schedule(train_no: str) -> dict:
     if "eRail" in title_text or train_no not in title_text:
         return {}
 
-    # Extract train name
+    
     train_name = re.sub(r"^\d+\s*", "", title_text)
     train_name = re.sub(r"\s*Train Time Table.*", "", train_name, flags=re.I).strip()
 
@@ -81,10 +58,10 @@ def fetch_schedule(train_no: str) -> dict:
         "train_name":  train_name,
         "running_days":[1,1,1,1,1,1,1],
         "stations":    [],
-        "scraped_at":  time.strftime("%Y-%m-%d"),   # NEW: track when scraped
+        "scraped_at":  time.strftime("%Y-%m-%d"),  
     }
 
-    # Find schedule table
+    
     table = None
     for tbl in soup.find_all("table"):
         headers = [th.get_text(strip=True).lower() for th in tbl.find_all("th")]
@@ -152,7 +129,7 @@ def fetch_schedule(train_no: str) -> dict:
     return result
 
 
-# ── Graph builder ─────────────────────────────────────────────────────────────
+
 
 def add_train_to_graph(graph, train_no, schedule):
     """Add edges for a train to the graph. Returns count of new edges added."""
@@ -168,7 +145,7 @@ def add_train_to_graph(graph, train_no, schedule):
         if src not in graph:
             graph[src] = []
 
-        # Check if edge already exists (same train)
+       
         exists = any(e["to"] == dst and e["train"] == train_no for e in graph[src])
         if not exists:
             graph[src].append({"to": dst, "train": train_no, "weight": round(dist, 1)})
@@ -176,7 +153,6 @@ def add_train_to_graph(graph, train_no, schedule):
     return added
 
 
-# ── Phase 1: Update existing trains ──────────────────────────────────────────
 
 def update_existing_trains(schedules, graph):
     trains = sorted([t for t, v in schedules.items()
@@ -215,18 +191,16 @@ def update_existing_trains(schedules, graph):
     return updated, failed, new_edges
 
 
-# ── Phase 2: Discover new trains ──────────────────────────────────────────────
 
 def discover_new_trains(schedules, graph, existing_trains):
     new_found   = []
     new_edges   = 0
     checked     = 0
 
-    # Build list of train numbers to check
     to_check = []
     for start, end, desc, kind in SCAN_RANGES:
         if kind == "update":
-            continue  # skip — handled in phase 1
+            continue 
         for n in range(start, end + 1):
             t = str(n)
             if t not in existing_trains:
@@ -271,7 +245,6 @@ def _save(schedules, graph):
         json.dump(graph, f, ensure_ascii=False)
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
     print("=" * 60)
